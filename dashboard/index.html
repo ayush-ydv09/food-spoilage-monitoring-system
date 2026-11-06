@@ -50,10 +50,10 @@ function addPoint(chart,label,value){chart.data.labels.push(label);chart.data.da
 function handleTelemetry(payload){
  let d;try{d=JSON.parse(payload);}catch(e){console.warn('Invalid telemetry JSON',e);return;}
  if(d.device_id && d.device_id!==DEVICE_ID)return;
- const t=Number.isFinite(Number(d.temperature))?Number(d.temperature):null;
- const h=Number.isFinite(Number(d.humidity))?Number(d.humidity):null;
- const gas=Number.isFinite(Number(d.mq135_raw))?Number(d.mq135_raw):null;
- const rssi=Number.isFinite(Number(d.rssi))?Number(d.rssi):null;
+ const t=d.temperature!==null && d.temperature!==undefined && Number.isFinite(Number(d.temperature))?Number(d.temperature):null;
+ const h=d.humidity!==null && d.humidity!==undefined && Number.isFinite(Number(d.humidity))?Number(d.humidity):null;
+ const gas=d.mq135_raw!==null && d.mq135_raw!==undefined && Number.isFinite(Number(d.mq135_raw))?Number(d.mq135_raw):null;
+ const rssi=d.rssi!==null && d.rssi!==undefined && Number.isFinite(Number(d.rssi))?Number(d.rssi):null;
  $('temp').innerHTML=(t===null?'—':t.toFixed(1))+' <span class="unit">°C</span>';
  $('hum').innerHTML=(h===null?'—':h.toFixed(1))+' <span class="unit">%</span>';
  $('gas').textContent=gas===null?'—':Math.round(gas);
