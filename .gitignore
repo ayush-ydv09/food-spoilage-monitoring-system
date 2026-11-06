@@ -1,0 +1,25 @@
+# Arduino / embedded build outputs
+build/
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.a
+*.d
+*.tmp
+*.bak
+*.orig
+
+# Local credentials and private configuration
+secrets.h
+credentials.h
+config.local.h
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
