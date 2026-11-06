@@ -10,7 +10,7 @@
 :root{color-scheme:dark;--bg:#0b1220;--panel:#121f36;--line:#263858;--text:#e7eefb;--muted:#9aacc8;--cyan:#22d3ee;--green:#2ee6a6;--amber:#fbbf24}
 *{box-sizing:border-box}body{margin:0;padding:24px;background:var(--bg);color:var(--text);font:15px system-ui,Segoe UI,sans-serif}
 main{max-width:1100px;margin:auto}header{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:18px}
-h1{margin:0;font-size:clamp(1.4rem,3vw,2rem)}p{color:var(--muted)}.status{color:var(--amber);font-weight:700}
+h1{margin:0;font-size:clamp(1.4rem,3vw,2rem)}p{color:var(--muted)}.status{color:var(--amber);font-weight:700}.device-state{font-weight:700}.state-online{color:var(--green)}.state-offline{color:#fb7185}.state-unknown{color:var(--amber)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:22px 0}
 .card,.chart{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
 .label{color:var(--muted);font-size:.85rem}.value{font-size:2rem;font-weight:750;margin-top:8px}.unit{font-size:.9rem;color:var(--muted)}
@@ -20,7 +20,7 @@ small{color:var(--muted)}footer{margin-top:24px;color:var(--muted);font-size:.85
 </style>
 </head>
 <body><main>
-<header><div><h1>Food Monitoring System</h1><p>ESP32 · DHT22 · MQ-135 · MQTT telemetry</p></div><div>Broker: <span id="mqttState" class="status">Connecting…</span><br><small id="lastSeen">Waiting for telemetry</small></div></header>
+<header><div><h1>Food Monitoring System</h1><p>ESP32 · DHT22 · MQ-135 · MQTT telemetry</p></div><div>Broker: <span id="mqttState" class="status">Connecting…</span><br>ESP32: <span id="deviceState" class="device-state state-unknown">Unknown</span><br><small id="lastSeen">Waiting for telemetry</small></div></header>
 <section class="grid">
 <div class="card"><div class="label">Temperature</div><div class="value" id="temp">— <span class="unit">°C</span></div></div>
 <div class="card"><div class="label">Relative humidity</div><div class="value" id="hum">— <span class="unit">%</span></div></div>
@@ -41,13 +41,13 @@ const MQTT_URL='wss://broker.hivemq.com:8884/mqtt';
 const DEVICE_ID='ayush-7k3q-esp32';
 const TOPIC_TELEMETRY='foodmonitor/'+DEVICE_ID+'/telemetry';
 const TOPIC_STATUS='foodmonitor/'+DEVICE_ID+'/status';
-const maxPoints=60, records=[];
+const maxPoints=60, records=[];\nconst DEVICE_TIMEOUT_MS=15000;\nlet lastTelemetryAt=0;\nlet deviceReportedOnline=false;
 const $=id=>document.getElementById(id);
 const charts={};
 function makeChart(id,label){return new Chart($(id),{type:'line',data:{labels:[],datasets:[{label,data:[],borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,.12)',fill:true,tension:.25,pointRadius:1}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{ticks:{display:false}},y:{ticks:{color:'#9aacc8'},grid:{color:'#263858'}}}}});}
 charts.temp=makeChart('tempChart','Temperature');charts.hum=makeChart('humChart','Humidity');charts.gas=makeChart('gasChart','MQ-135 raw ADC');
 function addPoint(chart,label,value){chart.data.labels.push(label);chart.data.datasets[0].data.push(value);if(chart.data.labels.length>maxPoints){chart.data.labels.shift();chart.data.datasets[0].data.shift();}chart.update('none');}
-function handleTelemetry(payload){
+function setDeviceState(state){\n const el=$('deviceState');\n el.textContent=state;\n el.className='device-state '+(state==='Online'?'state-online':state==='Offline'?'state-offline':'state-unknown');\n}\nfunction handleDeviceStatus(payload){\n const state=String(payload).trim().toLowerCase();\n if(state==='online'){deviceReportedOnline=true;setDeviceState('Online');}\n else if(state==='offline'){deviceReportedOnline=false;setDeviceState('Offline');}\n else console.warn('Unknown device status:',state);\n}\nfunction handleTelemetry(payload){
  let d;try{d=JSON.parse(payload);}catch(e){console.warn('Invalid telemetry JSON',e);return;}
  if(d.device_id && d.device_id!==DEVICE_ID)return;
  const t=d.temperature!==null && d.temperature!==undefined && Number.isFinite(Number(d.temperature))?Number(d.temperature):null;
@@ -58,7 +58,7 @@ function handleTelemetry(payload){
  $('hum').innerHTML=(h===null?'—':h.toFixed(1))+' <span class="unit">%</span>';
  $('gas').textContent=gas===null?'—':Math.round(gas);
  $('rssi').innerHTML=(rssi===null?'—':Math.round(rssi))+' <span class="unit">dBm</span>';
- const now=new Date();$('lastSeen').textContent='Last packet: '+now.toLocaleTimeString();
+ const now=new Date();lastTelemetryAt=Date.now();deviceReportedOnline=true;setDeviceState('Online');$('lastSeen').textContent='Last packet: '+now.toLocaleTimeString();
  addPoint(charts.temp,now.toLocaleTimeString(),t);addPoint(charts.hum,now.toLocaleTimeString(),h);addPoint(charts.gas,now.toLocaleTimeString(),gas);
  records.push({time:now.toISOString(),temperature:t,humidity:h,mq135_raw:gas,rssi});
  if(records.length>5000)records.shift();
@@ -68,7 +68,7 @@ client.on('connect',()=>{$('mqttState').textContent='Connected';client.subscribe
 client.on('reconnect',()=>{$('mqttState').textContent='Reconnecting…';});
 client.on('close',()=>{$('mqttState').textContent='Disconnected';});
 client.on('error',e=>{$('mqttState').textContent='MQTT error';console.error(e);});
-client.on('message',(topic,payload)=>{const message=new TextDecoder().decode(payload);if(topic===TOPIC_TELEMETRY)handleTelemetry(message);});
+client.on('message',(topic,payload)=>{const message=new TextDecoder().decode(payload);if(topic===TOPIC_TELEMETRY)handleTelemetry(message);else if(topic===TOPIC_STATUS)handleDeviceStatus(message);});\nsetInterval(()=>{if(lastTelemetryAt && Date.now()-lastTelemetryAt>DEVICE_TIMEOUT_MS){setDeviceState('Offline');}else if(!lastTelemetryAt && !deviceReportedOnline){/* Await retained device status or first telemetry. */}},3000);
 $('csv').addEventListener('click',()=>{if(!records.length){alert('No telemetry received yet.');return;}const cols=Object.keys(records[0]);const quote=v=>v===null?'':'"'+String(v).replace(/"/g,'""')+'"';const csv=[cols.join(','),...records.map(r=>cols.map(k=>quote(r[k])).join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='food-monitor-readings.csv';a.click();URL.revokeObjectURL(a.href);});
 window.addEventListener('beforeunload',()=>client.end(true));
 </script></body></html>
